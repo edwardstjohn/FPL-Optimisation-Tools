@@ -107,7 +107,7 @@ def read_sensitivity(options=None):
             df_percentages = df_counts.divide(no_plans).multiply(100)
 
             # Map percentages to display with 0 decimals, hide 0%
-            df_percentages = df_percentages.map(lambda x: f"{x:.0f}%" if x != 0 else "")
+            df_percentages = df_percentages.applymap(lambda x: f"{x:.0f}%" if x != 0 else "")
 
             # Store numeric version for sorting and total calculations
             df_percentages_numeric = df_counts.divide(no_plans).multiply(100)
