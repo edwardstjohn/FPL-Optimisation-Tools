@@ -45,7 +45,8 @@ def create_squad_timeline(current_squad, statistics, picks, filename):
     for gw_idx, week in enumerate(display_weeks):
         if week == base_week:
             gw_players = df_base[df_base['id'].isin(current_squad)]
-            gw_players['lineup'] = 1
+            #gw_players['lineup'] = 1
+            gw_players.loc[:, 'lineup'] = 1 # to avoid slice warning
             ax.text(gw_idx * gameweek_spacing, 16, 'Base',
                     color=text_color, fontsize=10, ha='center')
         else:
