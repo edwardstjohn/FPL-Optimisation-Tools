@@ -9,7 +9,13 @@ archive/*
 solver/*
 */.ipynb_checkpoints/*
 data/fplreview.csv
+data/fplreview_12gws.csv
 data/kiwi.csv
 data/TransferAlgorithm.csv
 data/login.json
 run/results/*.csv
+data/results/*.csv
+run/tmp/*
+HiGHS.log
+run/HiGHS.log
+data/fplreview_gab_in.csv
