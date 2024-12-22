@@ -220,6 +220,47 @@ def prep_data(my_data, options):
     if options.get('export_data', '') != '' and datasource == 'mixed':
         data.to_csv(f"../data/{options['export_data']}")
 
+    # AM fix
+    am_data = data[data['Pos'] == 'AM'].copy()
+    data = data[data['Pos'] != 'AM'].copy()
+
+    if options.get('export_am_ev'):
+        manager_dict = {
+            "ARS": "Arteta",
+            "AVL": "Emery",
+            "BOU": "Iraola",
+            "BRE": "Frank",
+            "BHA": "Hurzeler",
+            "CHE": "Maresca",
+            "CRY": "Glasner",
+            "EVE": "Dyche",
+            "FUL": "Silva",
+            "IPS": "McKenna",
+            "LEI": "van Nistelrooy",
+            "LIV": "Slot",
+            "MCI": "Guardiola",
+            "MUN": "Amorim",
+            "NEW": "Howe",
+            "NFO": "Nuno",
+            "SOU": "Martin",
+            "TOT": "Postecoglou",
+            "WHU": "Lopetegui",
+            "WOL": "O'Neil",
+        }
+        am_data["Manager"] = am_data["ID"].map(manager_dict)
+        am_data = am_data.rename(columns={"ID": "team", "BV": "Price"})
+        selected_columns = ["team", "Manager", "Price"] + [col for col in am_data.columns if "_Pts" in col]
+        am_data_final = am_data[selected_columns].copy()
+
+        am_data_final.to_csv("../data/am_pts.csv")
+
+    # Type fixes due to AM projections
+    data['review_id'] = data['review_id'].astype(np.int64)
+    for col in data.columns:
+        if "_xMins" in col:
+            data[col] = pd.to_numeric(data[col], errors="coerce").fillna(0).astype(int)
+
+
     merged_data = pd.merge(elements_team, data, left_on='id_x', right_on='review_id')
     merged_data.set_index(['id_x'], inplace=True)
 
@@ -528,10 +569,10 @@ def solve_multi_period_fpl(data, options):
                     variable = pair['variable']
                     cc_gw = current_chips.get(chip)
                     if cc_gw is not None and cc_gw in gameweeks:
-                        model.add_constraint(variable[cc_gw] == 1, name=f"cc_{chip}_1")
+                        model.add_constraint(variable[cc_gw] == 1, name=f"cc_{chip}")
                         options['chip_limits'][chip] = 1
                     else:
-                        model.add_constraint(so.expr_sum(variable[w] for w in gameweeks) == 0, name=f"cc_{chip}_2")
+                        model.add_constraint(so.expr_sum(variable[w] for w in gameweeks) == 0, name=f"cc_{chip}")
                         options['chip_limits'][chip] = 0
     
 
@@ -838,6 +879,13 @@ def solve_multi_period_fpl(data, options):
         def_aux = model.add_variables(teams, gameweeks, vartype=so.binary, name='daux')
         model.add_constraints((weekly_sum[t,w] <= 3 * def_aux[t,w] for t in teams for w in gameweeks), name='dauxc1')
         model.add_constraints((weekly_sum[t,w] >= 2 - 3 * (1 - def_aux[t,w]) for t in teams for w in gameweeks), name='dauxc2')
+
+    if options.get("transfer_itb_buffer"):
+        buffer_amount = float(options['transfer_itb_buffer'])
+        gw_with_tr = model.add_variables(gameweeks, name='gw_with_tr', vartype=so.binary)
+        model.add_constraints((15 * gw_with_tr[w] >= number_of_transfers[w] for w in gameweeks), name='gw_with_tr_lb')
+        model.add_constraints((gw_with_tr[w] <= number_of_transfers[w] for w in gameweeks), name='gw_with_tr_ub')
+        model.add_constraints((in_the_bank[w] >= buffer_amount * gw_with_tr[w] for w in gameweeks), name='buffer_con')
 
     if options.get("pick_prices", None) not in [None, {"G": "", "D": "", "M": "", "F": ""}]:
         print("OC - Pick Prices")
@@ -1198,7 +1246,7 @@ def solve_multi_period_fpl(data, options):
             if chip_decision != "":
                 summary_of_actions += "CHIP " + chip_decision + "\n"
                 move_summary['chip'].append(chip_decision + str(w))
-            summary_of_actions += f"ITB={in_the_bank[w].get_value()}, FT={free_transfers[w].get_value()}, PT={penalized_transfers[w].get_value()}, NT={number_of_transfers[w].get_value()}\n"
+            summary_of_actions += f"ITB={in_the_bank[w-1].get_value()}->{in_the_bank[w].get_value()}, FT={free_transfers[w].get_value()}, PT={penalized_transfers[w].get_value()}, NT={number_of_transfers[w].get_value()}\n"
             for p in players:
                 if transfer_in[p,w].get_value() > 0.5:
                     summary_of_actions += f"Buy {p} - {merged_data['web_name'][p]}\n"
@@ -1367,12 +1415,17 @@ def solve_multi_period_fpl(data, options):
                 chip = pair['chip']
                 variable = pair['variable']
                 model.drop_constraint(model.get_constraint(f'cc_{chip}'))
+                model.drop_constraint(model.get_constraint(f'use_{chip}_limit'))
+
                 if current_chips.get(chip) is not None:
                     model.add_constraint(variable[current_chips[chip]] == 1, name=f"cc_{chip}")
                     options['chip_limits'][chip] = 1
+                    model.add_constraint(so.expr_sum(variable[w] for w in gameweeks) == 1, name=f'use_{chip}_limit')
+
                 else:
                     model.add_constraint(so.expr_sum(variable[w] for w in gameweeks) == 0, name=f"cc_{chip}")
                     options['chip_limits'][chip] = 0
+                    model.add_constraint(so.expr_sum(variable[w] for w in gameweeks) == 0, name=f'use_{chip}_limit')
             
         
 
