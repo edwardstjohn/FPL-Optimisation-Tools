@@ -811,6 +811,21 @@ def solve_multi_period_fpl(data, options):
         model.add_constraints((so.expr_sum(squad[p,w] for p in players if player_team[p] == t and merged_data.loc[p, 'Pos'] in {'G', 'D'}) <= max_defs_per_team for t in teams for w in gameweeks), name='defenders_per_team_limit')
         model.add_constraints((so.expr_sum(squad_fh[p,w] for p in players if player_team[p] == t and merged_data.loc[p, 'Pos'] in {'G', 'D'}) <= max_defs_per_team * use_fh[w] for t in teams for w in gameweeks), name='defenders_per_team_limit_fh')
 
+    max_players_per_team = options.get("max_players_per_team", {})
+    if max_players_per_team:
+        # Convert full team names to short names if needed
+        max_players_short = {team_short_dict.get(t, t): n for t, n in max_players_per_team.items()}
+        
+        model.add_constraints(
+            (so.expr_sum(squad[p,w] for p in players if team_short_dict[player_team[p]] == t) <= n 
+             for t, n in max_players_short.items() for w in gameweeks),
+            name='players_per_team_limit'
+        )
+        model.add_constraints(
+            (so.expr_sum(squad_fh[p,w] for p in players if team_short_dict[player_team[p]] == t) <= n * use_fh[w]
+             for t, n in max_players_short.items() for w in gameweeks),
+            name='players_per_team_limit_fh'
+        )
 
     for booked_transfer in booked_transfers:
         print("OC - Booked TRs")
@@ -1079,7 +1094,11 @@ def solve_multi_period_fpl(data, options):
                         elif output:
                             print(output.strip())
 
-                process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                import shlex  # Import for safely splitting the command string
+
+                command_list = shlex.split(command)  # Split the command into a list
+                process = subprocess.Popen(command_list, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
                 output_thread = threading.Thread(target=print_output, args=(process,))
                 output_thread.start()
                 output_thread.join()
